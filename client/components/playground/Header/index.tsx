@@ -1,19 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import Compile from "../Modal/Compile";
-import { connect, disconnect } from "starknetkit";
+import { useAccount, useConnect } from "@starknet-react/core";
+import { DisconnectButton } from "@/lib/Connect";
 
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import Argent from "@/public/img/Argent Wallet.png";
 import Bravoos from "@/public/img/bravoos wallet.jpeg";
-import { Home, Upload, MessageSquare, Book, Wallet } from "lucide-react"; 
+import { Home, Upload, MessageSquare, Book, Wallet } from "lucide-react";
 import { motion } from "framer-motion";
-import Image from 'next/image';
-
-
-
+import Image from "next/image";
+import { v4 as uuidv4 } from "uuid";
+import { useRouter } from "next/navigation";
 
 interface HeaderProps {
   showClearButton: boolean;
@@ -24,11 +24,6 @@ interface HeaderProps {
   flowSummary: any;
   selectedNode: any;
   handleDelete: (node: any) => void;
-}
-
-interface StarknetConnection {
-  wallet?: any;
-  provider?: any;
 }
 
 export default function Header({
@@ -47,93 +42,29 @@ export default function Header({
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Wallet connection state
-  const [connection, setConnection] = useState<StarknetConnection | null>(null);
-  const [walletAddress, setWalletAddress] = useState<string | undefined>(undefined);
-  const isConnected = !!connection?.wallet;
+  const { address } = useAccount();
+  const { connect, connectors } = useConnect();
+  const isConnected = !!address;
 
-  // Helper to extract the wallet address
-  const getWalletAddress = async (wallet: any): Promise<string | undefined> => {
-    try {
-      if (wallet.getAccount) {
-        return await wallet.getAccount();
-      }
-      if (wallet.selectedAddress) {
-        return wallet.selectedAddress;
-      }
-      if (wallet.account) {
-        return wallet.account;
-      }
-      if (wallet.enable) {
-        const accounts = await wallet.enable();
-        return accounts?.[0];
-      }
-      if (wallet.signer?.getAddress) {
-        return await wallet.signer.getAddress();
-      }
-      console.error("Could not determine wallet address format");
-      return undefined;
-    } catch (error) {
-      console.error("Error getting wallet address:", error);
-      return undefined;
-    }
-  };
-
-  // On mount, check for existing wallet connection
-  useEffect(() => {
-    const checkConnection = async () => {
-      const savedConnection = localStorage.getItem("starknetConnection");
-      if (savedConnection) {
-        try {
-          const result = await connect({ modalMode: "neverAsk" });
-          if (result?.wallet) {
-            setConnection(result);
-            const address = await getWalletAddress(result.wallet);
-            setWalletAddress(address);
-          }
-        } catch (error) {
-          console.error("Failed to reconnect wallet:", error);
-          localStorage.removeItem("starknetConnection");
-        }
-      }
-    };
-    checkConnection();
-  }, []);
-
-  // Connect wallet function
-  const handleConnectWallet = async () => {
-    try {
-      const result = await connect({
-        webWalletUrl: "https://web.argent.xyz",
-        dappName: "DevXStark",
-      });
-      if (result?.wallet) {
-        setConnection(result);
-        const address = await getWalletAddress(result.wallet);
-        setWalletAddress(address);
-        localStorage.setItem("starknetConnection", "true");
-      }
-    } catch (error) {
-      console.error("Error connecting wallet:", error);
-    }
-  };
-
-  // Disconnect wallet function
-  const handleDisconnectWallet = async () => {
-    try {
-      await disconnect();
-      setConnection(null);
-      setWalletAddress(undefined);
-      localStorage.removeItem("starknetConnection");
-    } catch (error) {
-      console.error("Error disconnecting wallet:", error);
-    }
-  };
+  const router = useRouter();
 
   // Format wallet address for display
   const formatAddress = (address?: string) => {
     if (!address) return "";
-    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+    return `${address.substring(0, 6)}...${address.substring(
+      address.length - 4
+    )}`;
+  };
+
+  const handleConnect = async (connectorId: string) => {
+    try {
+      await connect({
+        connector: connectors.find((c) => c.id === connectorId),
+      });
+      setIsWalletModalOpen(false);
+    } catch (error) {
+      console.error("Failed to connect wallet:", error);
+    }
   };
 
   const isDeleteVisible = !!selectedNode;
@@ -143,7 +74,6 @@ export default function Header({
       <div className="bg-[radial-gradient(circle,_#797474,_#e6e1e1,_#979191)] animate-smoke shadow-md rounded-full w-[80%] mx-auto mb-6">
         <div className="flex items-center m-4">
           {/* Left: Editable Project Title */}
-
           <motion.div
             className="flex-1 flex items-center "
             initial={{ x: -200, opacity: 0 }}
@@ -171,7 +101,6 @@ export default function Header({
           </motion.div>
 
           {/* Center: Navigation Links */}
-
           <motion.div
             className="flex-1 hidden md:flex  justify-center"
             initial={{ y: -50, opacity: 0 }}
@@ -196,12 +125,12 @@ export default function Header({
                 </Link>
               </li>
               <li>
-                <Link
-                  href="/agent/transaction/someId"
-                  className="flex items-center gap-2 hover:text-blue-500 transition-colors hover:scale-110  duration-300 "
+                <button
+                  onClick={() => router.push(`/agent/c/${uuidv4()}`)}
+                  className="flex items-center gap-2 hover:text-blue-500 transition-colors hover:scale-110 duration-300"
                 >
                   <MessageSquare size={18} /> Agent
-                </Link>
+                </button>
               </li>
               <li>
                 <Link
@@ -235,15 +164,9 @@ export default function Header({
             {isConnected ? (
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                  {formatAddress(walletAddress)}
+                  {formatAddress(address)}
                 </span>
-                <Button
-                  variant="outline"
-                  onClick={handleDisconnectWallet}
-                  className=" flex items-center gap-2 text-red-500 border-red-200 hover:bg-red-50"
-                >
-                  <Wallet size={18} /> Disconnect
-                </Button>
+                <DisconnectButton className="flex items-center gap-2 text-grayscale-200 border-red-200 hover:bg-red-50 hover:text-green-dark" />
               </div>
             ) : (
               <Button
@@ -292,14 +215,14 @@ export default function Header({
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <Button
-              onClick={handleConnectWallet}
+              onClick={() => handleConnect("argentX")}
               className="flex items-center justify-center gap-2"
             >
               <Image src={Argent.src} alt="Argent" width={40} height={40} />
               Connect with Argent
             </Button>
             <Button
-              onClick={handleConnectWallet}
+              onClick={() => handleConnect("braavos")}
               className="flex items-center justify-center gap-2"
             >
               <Image
@@ -312,7 +235,7 @@ export default function Header({
               Connect with Braavos
             </Button>
             <Button
-              onClick={handleConnectWallet}
+              onClick={() => handleConnect("injected")}
               variant="outline"
               className="flex items-center justify-center gap-2"
             >
